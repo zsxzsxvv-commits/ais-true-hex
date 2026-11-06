@@ -1,0 +1,127 @@
+name: TIME PARKIN CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  # ========================================================
+  # JOB 1: ทดสอบและตรวจสอบความถูกต้องของ BACKEND API
+  # ========================================================
+  test-backend-api:
+    name: Backend API CI & Tests
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [ 20.x, 22.x ]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Verify Backend API Code Syntax
+        working-directory: SOURCE_CODE/BACKEND_API
+        run: |
+          node -c src/server.js
+          node -c src/config.js
+          node -c src/database/dbManager.js
+          node -c src/middleware/auth.js
+          node -c src/middleware/security.js
+          node -c src/controllers/systemController.js
+          node -c src/controllers/adminController.js
+          node -c src/services/auditLogger.js
+          echo "All Backend API source files passed syntax verification!"
+
+      - name: Run Backend Integration & Security Tests
+        working-directory: SOURCE_CODE/BACKEND_API
+        env:
+          PORT: 3000
+          ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN || 'TP_ADMIN_SECURE_TOKEN_99881122' }}
+          HMAC_SECRET: ${{ secrets.HMAC_SECRET || 'TIME_PARKIN_HMAC_MASTER_KEY_2026' }}
+        run: |
+          node tests/system_test_runner.js
+
+  # ========================================================
+  # JOB 2: ตรวจสอบความถูกต้องของ DISCORD BOT (Discord.js v14)
+  # ========================================================
+  test-discord-bot:
+    name: Discord Bot Syntax & Structure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Verify Discord Bot Files Syntax
+        working-directory: SOURCE_CODE/DISCORD_BOT
+        run: |
+          node -c src/bot.js
+          node -c src/config.js
+          node -c src/apiClient.js
+          node -c src/embeds/statusEmbed.js
+          node -c src/commands/clock.js
+          node -c src/commands/update.js
+          node -c src/commands/status.js
+          node -c src/commands/maintenance.js
+          node -c src/commands/restart.js
+          echo "All Discord Bot files passed syntax verification!"
+
+  # ========================================================
+  # JOB 3: ตรวจสอบความถูกต้องของซอร์สโค้ด iOS (Swift)
+  # ========================================================
+  lint-ios-swift:
+    name: iOS Swift Code Verification
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Check Swift Version
+        run: swift --version
+
+      - name: Verify Swift Source Syntax
+        run: |
+          swiftc -typecheck -parse \
+            SOURCE_CODE/CLOCK_SYSTEM/Models/ClockModels.swift \
+            SOURCE_CODE/CLOCK_SYSTEM/Services/TimeParkinAPIService.swift \
+            SOURCE_CODE/IOS_APP_INTEGRATION/LicenseModel.swift \
+            SOURCE_CODE/SECURITY/AntiTampering.swift \
+            SOURCE_CODE/SECURITY/IntegrityVerification.swift \
+            SOURCE_CODE/SECURITY/SecurityLogger.swift
+          echo "Swift models, services, and security modules compiled successfully!"
+
+  # ========================================================
+  # JOB 4: ตรวจสอบความปลอดภัย ป้องกันข้อมูลลับรั่วไหล (Secret Scan)
+  # ========================================================
+  security-audit:
+    name: Security Leak & Integrity Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check for Unintended IPA or Private Keys
+        run: |
+          echo "Checking for unauthorized binaries..."
+          ! find . -name "*.ipa" -not -path "*/.*" | grep -q . || { echo "ERROR: .ipa file found in repository!"; exit 1; }
+          ! find . -name "*.p12" -o -name "*.mobileprovision" | grep -q . || { echo "ERROR: Private provisioning/signing files found!"; exit 1; }
+          echo "No forbidden binary or private signing files detected."
