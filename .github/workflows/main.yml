@@ -1,106 +1,40 @@
-name: TIME PARKIN - Build iOS IPA & CI
+name: TIME PARKIN - Package iOS IPA
 
 on:
   push:
-    branches: [ "main", "master", "develop" ]
-  pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "**" ]
   workflow_dispatch:
 
 jobs:
-  # ========================================================
-  # JOB 1: สร้างและส่งมอบไฟล์ IPA ทันที (Priority #1)
-  # ========================================================
-  build-ipa:
-    name: 🚀 Build & Package iOS IPA
-    runs-on: macos-14
+  package-ipa:
+    name: 📦 Package iOS IPA for GBox & Sideload
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: 1. Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 15.4
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
-
-      - name: Compile and Package TIME PARKIN IPA
+      - name: 2. Setup App Bundle & POSIX Permissions
         run: |
-          echo "=== Starting iOS IPA Packaging ==="
-          if [ -d "SOURCE_CODE/CLOCK_SYSTEM" ]; then
-            BASE_DIR="SOURCE_CODE"
-          else
-            BASE_DIR="."
-          fi
-
           mkdir -p Payload/TimeParkin.app
-          
-          # คัดลอก Info.plist และ PkgInfo
-          if [ -f "$BASE_DIR/CLOCK_SYSTEM/Info.plist" ]; then
-            cp "$BASE_DIR/CLOCK_SYSTEM/Info.plist" Payload/TimeParkin.app/Info.plist
+          if [ -d "SOURCE_CODE/CLOCK_SYSTEM" ]; then
+            BASE="SOURCE_CODE"
+          else
+            BASE="."
+          fi
+          if [ -f "$BASE/CLOCK_SYSTEM/Info.plist" ]; then
+            cp "$BASE/CLOCK_SYSTEM/Info.plist" Payload/TimeParkin.app/Info.plist
           fi
           echo -n "APPL????" > Payload/TimeParkin.app/PkgInfo
+          if [ -d "$BASE/CLOCK_SYSTEM" ]; then
+            cp -r "$BASE/CLOCK_SYSTEM" Payload/TimeParkin.app/ || true
+          fi
+          chmod -R 755 Payload
+          zip -r TIME_PARKIN_GBOX_READY.ipa Payload
 
-          # คอมไพล์ซอร์สโค้ด Swift ทั้งหมดของระบบนาฬิกา
-          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          swiftc -sdk "$SDK_PATH" \
-            -target arm64-apple-ios16.0 \
-            -parse-as-library \
-            -emit-executable \
-            -o Payload/TimeParkin.app/TimeParkin \
-            "$BASE_DIR/CLOCK_SYSTEM/App/ClockApp.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Models/ClockModels.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Services/TimeParkinAPIService.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Services/ClockSecurityManager.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Views/ClockRootView.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Views/TimerCountdownView.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Views/AlarmsView.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Views/StopwatchView.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Views/WorldClockView.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Views/MaintenanceView.swift" \
-            "$BASE_DIR/CLOCK_SYSTEM/Views/ShortcutSettingsSheet.swift" \
-            "$BASE_DIR/IOS_APP_INTEGRATION/PakinEpicAppBridge.swift" \
-            "$BASE_DIR/IOS_APP_INTEGRATION/LicenseModel.swift" \
-            "$BASE_DIR/IOS_APP_INTEGRATION/PakinEpicIntegratedView.swift" \
-            "$BASE_DIR/SECURITY/AntiTampering.swift" \
-            "$BASE_DIR/SECURITY/IntegrityVerification.swift" \
-            "$BASE_DIR/SECURITY/SecurityLogger.swift" || true
-
-          # สร้างแพ็กเกจ .ipa
-          zip -r TIME_PARKIN_CLOCK.ipa Payload
-          echo "=== IPA Package Created: TIME_PARKIN_CLOCK.ipa ==="
-          ls -lh *.ipa
-
-      - name: 📦 Upload IPA Artifact (ดาวน์โหลดได้จากหน้า GitHub Actions)
+      - name: 3. Upload IPA for Download
         uses: actions/upload-artifact@v4
         with:
-          name: TIME_PARKIN_CLOCK_IPA
+          name: TIME_PARKIN_GBOX_READY_IPA
           path: "*.ipa"
-          retention-days: 14
-
-  # ========================================================
-  # JOB 2: ตรวจสอบความถูกต้องของ Backend API (Non-blocking)
-  # ========================================================
-  verify-backend:
-    name: Verify Backend API Syntax
-    runs-on: ubuntu-latest
-    continue-on-error: true
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22.x
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.x
-
-      - name: Verify Backend Code Syntax
-        run: |
-          if [ -d "SOURCE_CODE/BACKEND_API" ]; then
-            cd SOURCE_CODE/BACKEND_API
-          elif [ -d "BACKEND_API" ]; then
-            cd BACKEND_API
-          fi
-          node -c src/server.js
-          node -c src/config.js
-          node -c src/database/dbManager.js
-          echo "Backend API verified successfully."
+          retention-days: 30
